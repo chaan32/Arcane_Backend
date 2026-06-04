@@ -7,7 +7,7 @@ services:
     # 현재 폴더의 Dockerfile을 사용하여 이미지를 빌드
     build: .
     container_name: arcane-app
-    # 이 서비스는 'nexushub-db' 서비스가 시작된 후에 시작되도록 설정
+    # 이 서비스는 'arcane-db' 서비스가 시작된 후에 시작되도록 설정
     depends_on:
       arcane-db:
           condition: service_healthy

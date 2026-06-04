@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>NexusHub AI Dataset Builder</title>
+    <title>Arcane AI Dataset Builder</title>
     <style>
         :root { --bg: #121212; --card: #1e1e1e; --blue: #1a237e; --red: #b71c1c; --text: #e0e0e0; }
         body { font-family: 'Malgun Gothic', sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
@@ -15,6 +15,12 @@
         .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #333; }
         .name { font-size: 0.9rem; font-weight: bold; }
         input { width: 70px; padding: 8px; background: #2a2a2a; border: 1px solid #555; color: #fff; text-align: center; border-radius: 6px; }
+        .form-card { max-width: 760px; margin: 40px auto; background: var(--card); border: 1px solid #333; border-radius: 16px; padding: 28px; box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
+        .form-title { margin: 0 0 12px; font-size: 1.4rem; }
+        .form-desc { margin: 0 0 20px; color: #aaa; line-height: 1.6; }
+        .puuid-form { display: flex; gap: 10px; }
+        .puuid-input { flex: 1; width: auto; text-align: left; }
+        .puuid-submit { padding: 10px 22px; border-radius: 10px; font-size: 1rem; box-shadow: none; }
         .footer { position: sticky; bottom: 0; background: var(--bg); padding: 25px; text-align: center; border-top: 2px solid #333; z-index: 100; }
         button { padding: 18px 100px; background: #4caf50; color: white; border: none; border-radius: 40px; font-size: 1.2rem; cursor: pointer; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
     </style>
@@ -22,8 +28,19 @@
 <body>
 
 <h1 style="text-align: center;">📊 AI 학습용 데이터 채점 (Match-v5 구조)</h1>
+<div id="puuidFormCard" class="form-card" style="display:none;">
+    <h2 class="form-title">PUUID 입력</h2>
+    <p class="form-desc">
+        학습 데이터를 만들 소환사의 PUUID를 입력하세요.
+        입력하면 <b>/tune.html?puuid=...</b> 주소로 이동한 뒤 데이터를 불러옵니다.
+    </p>
+    <form id="puuidForm" class="puuid-form">
+        <input id="puuidInput" class="puuid-input" type="text" placeholder="PUUID 입력" autocomplete="off">
+        <button class="puuid-submit" type="submit">데이터 열기</button>
+    </form>
+</div>
 <div id="status" style="text-align: center;">데이터를 불러오는 중...</div>
-<div id="gameContainer"></div>
+<div id="matchContainer"></div>
 
 <div class="footer">
     <button onclick="generateCSV()">CSV 데이터셋 생성 및 다운로드</button>
@@ -33,20 +50,69 @@
     const puuid = new URLSearchParams(window.location.search).get('puuid');
     let globalMatches = [];
 
+    const puuidFormCard = document.getElementById('puuidFormCard');
+    const puuidForm = document.getElementById('puuidForm');
+    const puuidInput = document.getElementById('puuidInput');
+    const status = document.getElementById('status');
+    const footer = document.querySelector('.footer');
+
+    puuidForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const nextPuuid = puuidInput.value.trim();
+        if (!nextPuuid) {
+            status.innerHTML = `<h2 style="color:#ff5252;">PUUID를 입력해주세요.</h2>`;
+            return;
+        }
+
+        window.location.href = `/tune.html?puuid=${encodeURIComponent(nextPuuid)}`;
+    });
+
+    if (!puuid) {
+        puuidFormCard.style.display = 'block';
+        status.innerHTML = 'PUUID를 입력하면 데이터를 불러옵니다.';
+        footer.style.display = 'none';
+    } else {
+        loadLearningData(puuid);
+    }
+
     // 1. 데이터 로드 (List<MatchModelDto> 수신)
-    fetch(`/api/v1/tune/learning-data?puuid=${puuid}`)
-        .then(res => res.json())
-        .then(data => {
-            globalMatches = data;
-            document.getElementById('status').style.display = 'none';
-            render(data);
-        })
-        .catch(err => {
-            document.getElementById('status').innerHTML = `<h2 style="color:red;">로드 실패: ${err.message}</h2>`;
-        });
+    function loadLearningData(targetPuuid) {
+        status.innerHTML = '데이터를 불러오는 중...';
+
+        fetch(`/api/v1/tune/learning-data?puuid=${encodeURIComponent(targetPuuid)}`)
+            .then(async res => {
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(errorText || `HTTP ${res.status}`);
+                }
+
+                return res.json();
+            })
+            .then(data => {
+                globalMatches = Array.isArray(data) ? data : [];
+                status.style.display = 'none';
+                render(globalMatches);
+            })
+            .catch(err => {
+                puuidFormCard.style.display = 'block';
+                puuidInput.value = targetPuuid;
+                footer.style.display = 'none';
+                status.style.display = 'block';
+                status.innerHTML = `<h2 style="color:#ff5252;">로드 실패: ${err.message}</h2>`;
+            });
+    }
 
     function render(matches) {
         const container = document.getElementById('matchContainer');
+        if (!matches.length) {
+            status.style.display = 'block';
+            status.innerHTML = `<h2 style="color:#ff5252;">표시할 매치 데이터가 없습니다.</h2>`;
+            footer.style.display = 'none';
+            return;
+        }
+
+        footer.style.display = 'block';
         // matches는 매치 20개의 배열
         container.innerHTML = matches.map((match, gIdx) => {
             // 제공해주신 JSON의 'info.participants' 배열 접근
@@ -140,6 +206,5 @@
         link.click();
     }
 </script>
-<div id="matchContainer"></div>
 </body>
 </html>
